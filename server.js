@@ -2,6 +2,8 @@
 require('dotenv').config();
 const express = require('express');
 const timeout = require('connect-timeout');
+const fs = require('fs');
+const path = require('path');
 const app = express();
 
 // 配置常量
@@ -10,8 +12,20 @@ const ARK_API_KEY = process.env.ARK_API_KEY;
 const PORT = process.env.PORT || 3000;
 const API_BASE_URL = process.env.API_BASE_URL;
 
-// 最简单的记忆功能：原始消息列表
+// 短期 & 长期记忆配置
+const MAX_HISTORY_LENGTH = 6;
 const messageHistory = [];
+const LONG_TERM_MEMORY_FILE = path.join(__dirname, 'long-term-memory.json');
+
+// 加载长期记忆
+let longTermMemory = [];
+if (fs.existsSync(LONG_TERM_MEMORY_FILE)) {
+  try {
+    longTermMemory = JSON.parse(fs.readFileSync(LONG_TERM_MEMORY_FILE, 'utf-8'));
+  } catch (err) {
+    console.warn('长期记忆读取失败:', err);
+  }
+}
 
 // 中间件
 app.use(express.json());
@@ -92,14 +106,15 @@ app.post('/api/chat', validateChatRequest, async (req, res) => {
 
     res.write('data: {"status": "started"}\n\n');
 
-    // 拼接所有历史消息
+    // 拼接系统提示 + 长期记忆 + 短期记忆 + 当前输入
+    const recentMessages = messageHistory.slice(-MAX_HISTORY_LENGTH);
     const messages = [
       { role: 'system', content: '你是一个专业的前端导师。' },
-      ...messageHistory,
+      ...longTermMemory,
+      ...recentMessages,
       { role: 'user', content: query }
     ];
 
-    // 保存用户输入
     messageHistory.push({ role: 'user', content: query });
 
     const response = await fetch(`${API_BASE_URL}/chat/completions`, {
@@ -119,6 +134,17 @@ app.post('/api/chat', validateChatRequest, async (req, res) => {
 
     const aiContent = await handleSseResponse(res, response.body);
     messageHistory.push({ role: 'assistant', content: aiContent });
+
+    // 写入长期记忆（示例规则：若包含“记住”关键词）
+    if (query.includes('记住') || aiContent.includes('我会记住')) {
+      longTermMemory.push({ role: 'user', content: query });
+      longTermMemory.push({ role: 'assistant', content: aiContent });
+      try {
+        fs.writeFileSync(LONG_TERM_MEMORY_FILE, JSON.stringify(longTermMemory, null, 2), 'utf-8');
+      } catch (err) {
+        console.error('写入长期记忆失败:', err);
+      }
+    }
 
     res.end();
   } catch (error) {
