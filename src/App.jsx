@@ -20,12 +20,14 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: input })
     });
+    
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let done = false;
     let buffer = '';
     while (!done) {
       const { value, done: doneReading } = await reader.read();
+      
       done = doneReading;
       if (value) {
         buffer += decoder.decode(value, { stream: true });
@@ -59,6 +61,7 @@ export default function App() {
         {messages.map((msg, i) => (
           <div key={i} style={{ margin: '12px 0', textAlign: msg.role === 'user' ? 'right' : 'left' }}>
             <div style={{ display: 'inline-block', maxWidth: '90%', background: msg.role === 'user' ? '#d2eafd' : '#f3f3f3', borderRadius: 6, padding: 8 }}>
+             {/* 允许将字符串形式的 HTML 代码直接渲染到指定元素中，相当于原生 JavaScript 的 element.innerHTML */}
               <span dangerouslySetInnerHTML={{ __html: marked.parse(msg.content || '') }} />
             </div>
           </div>
